@@ -69,6 +69,8 @@ class Chef
     class ValidationFailed < ArgumentError; end
     class InvalidPrivateKey < ArgumentError; end
     class ConfigurationError < ArgumentError; end
+    class MissingKeyAttribute < ArgumentError; end
+    class InvalidKeyArgument < ArgumentError; end
     class RedirectLimitExceeded < RuntimeError; end
     class AmbiguousRunlistSpecification < ArgumentError; end
     class CookbookFrozen < ArgumentError; end

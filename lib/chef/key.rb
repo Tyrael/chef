@@ -18,8 +18,22 @@
 
 require 'chef/json_compat'
 require 'chef/mixin/params_validate'
+require 'chef/exceptions'
 
 class Chef
+  # Class for interacting with a chef key object. Can be used to create new keys,
+  # save to server, load keys from server, list keys, delete keys, etc.
+  #
+  # @author Tyler Cloke
+  #
+  # @attr [String] actor           the name of the client or user that this key is for
+  # @attr [String] name            the name of the key
+  # @attr [String] public_key      the RSA string of this key
+  # @attr [String] expiration_date the ISO formatted string YYYY-MM-DDTHH:MM:SSZ, i.e. 2020-12-24T21:00:00Z
+  # @attr [String] rest            Chef::REST object, initialized and cached via chef_rest method
+  # @attr [string] api_base        either "users" or "clients", initialized and cached via api_base method
+  #
+  # @attr_reader [String] actor_field_name must be either 'client' or 'user'
   class Key
 
     include Chef::Mixin::ParamsValidate
@@ -31,7 +45,7 @@ class Chef
       @actor = actor
 
       unless actor_field_name == "user" || actor_field_name == "client"
-        raise ArgumentError.new("the second argument to initialize must be either 'user' or 'client'")
+        raise Chef::Exceptions::InvalidKeyArgument, "the second argument to initialize must be either 'user' or 'client'"
       end
 
       @actor_field_name = actor_field_name
@@ -51,10 +65,10 @@ class Chef
 
     def api_base
       @api_base ||= if @actor_field_name == "user"
-                            "users"
-                          else
-                            "clients"
-                          end
+                      "users"
+                    else
+                      "clients"
+                    end
     end
 
     def actor(arg=nil)
@@ -79,7 +93,7 @@ class Chef
 
     def to_hash
       result = {
-        @actor_field_name => @actor,
+        @actor_field_name => @actor
       }
       result["name"] = @name if @name
       result["public_key"] = @public_key if @public_key
@@ -92,33 +106,28 @@ class Chef
     end
 
     def create
-      if @public_key.nil? || @expiration_date.nil?
-        raise ArgumentError.new("public_key and expiration_date fields must be populated when create is called")
+      if @public_key.nil?
+        raise Chef::Exceptions::MissingKeyAttribute, "public_key fields must be populated when create is called"
       end
 
       # defaults the key name to the fingerprint of the key
       if @name.nil?
-        @name = generate_fingerprint(@public_key)
+        @name = generate_fingerprint_from_public_key_instance
       end
 
-      payload = {"name" => @name, "public_key" => @public_key, "expiration_date" => @expiration_date}
+      payload = {"name" => @name, "public_key" => @public_key}
+      payload['expiration_date'] = @expiration_date unless @expiration_date.nil?
       new_key = chef_rest.post_rest("#{api_base}/#{@actor}/keys", payload)
       Chef::Key.from_hash(new_key)
     end
 
-    def generate_fingerprint(public_key)
-        # TODO: is it safe to assume we aren't dealing with certs here?
-        openssl_key_object = OpenSSL::PKey::RSA.new(public_key)
-        data_string = OpenSSL::ASN1::Sequence([
-                                                OpenSSL::ASN1::Integer.new(openssl_key_object.public_key.n),
-                                                OpenSSL::ASN1::Integer.new(openssl_key_object.public_key.e)
-                                              ])
-        OpenSSL::Digest::SHA1.hexdigest(data_string.to_der).scan(/../).join(':')
+    def generate_fingerprint_from_public_key_instance
+      self.class.generate_fingerprint(@public_key)
     end
 
     def update
       if @name.nil?
-        raise ArgumentError.new("the name field must be populated when update is called")
+        raise Chef::Exceptions::MissingKeyAttribute, "the name field must be populated when update is called"
       end
 
       new_key = chef_rest.put_rest("#{api_base}/#{@actor}/keys/#{@name}", to_hash)
@@ -126,20 +135,18 @@ class Chef
     end
 
     def save
-      begin
-        create
-      rescue Net::HTTPServerException => e
-        if e.response.code == "409"
-          update
-        else
-          raise e
-        end
+      create
+    rescue Net::HTTPServerException => e
+      if e.response.code == "409"
+        update
+      else
+        raise e
       end
     end
 
     def destroy
       if @name.nil?
-        raise ArgumentError.new("the name field must be populated when delete is called")
+        raise Chef::Exceptions::MissingKeyAttribute, "the name field must be populated when delete is called"
       end
 
       chef_rest.delete_rest("#{api_base}/#{@actor}/keys/#{@name}")
@@ -184,6 +191,15 @@ class Chef
     def self.load_by_client(actor, key_name)
       response = Chef::REST.new(Chef::Config[:chef_server_url]).get_rest("clients/#{actor}/keys/#{key_name}")
       Chef::Key.from_hash(response)
+    end
+
+    def self.generate_fingerprint(public_key)
+        openssl_key_object = OpenSSL::PKey::RSA.new(public_key)
+        data_string = OpenSSL::ASN1::Sequence([
+                                                OpenSSL::ASN1::Integer.new(openssl_key_object.public_key.n),
+                                                OpenSSL::ASN1::Integer.new(openssl_key_object.public_key.e)
+                                              ])
+        OpenSSL::Digest::SHA1.hexdigest(data_string.to_der).scan(/../).join(':')
     end
 
     private

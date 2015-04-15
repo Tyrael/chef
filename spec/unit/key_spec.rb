@@ -70,8 +70,8 @@ EOS
   end
 
   describe "when a new Chef::Key object is initialized with invalid input" do
-    it "should raise an ArgumentError" do
-      expect { Chef::Key.new("original_actor", "not_a_user_or_client") }.to raise_error(ArgumentError)
+    it "should raise an InvalidKeyArgument" do
+      expect { Chef::Key.new("original_actor", "not_a_user_or_client") }.to raise_error(Chef::Exceptions::InvalidKeyArgument)
     end
   end
 
@@ -310,8 +310,8 @@ EOS
     describe "create" do
       shared_examples_for "create key" do
         context "when a field is missing" do
-          it "should raise an ArgumentError" do
-            expect { key.create }.to raise_error(ArgumentError)
+          it "should raise a MissingKeyAttribute" do
+            expect { key.create }.to raise_error(Chef::Exceptions::MissingKeyAttribute)
           end
         end
 
@@ -365,8 +365,8 @@ EOS
     describe "update" do
       shared_examples_for "update key" do
         context "when name is missing" do
-          it "should raise an ArgumentError" do
-            expect { key.update }.to raise_error(ArgumentError)
+          it "should raise an MissingKeyAttribute" do
+            expect { key.update }.to raise_error(Chef::Exceptions::MissingKeyAttribute)
           end
         end
 
@@ -430,8 +430,8 @@ EOS
     describe "destroy" do
       shared_examples_for "destroy key" do
         context "when name is missing" do
-          it "should raise an ArgumentError" do
-            expect { Chef::Key.new("username", "user").destroy }.to raise_error(ArgumentError)
+          it "should raise an MissingKeyAttribute" do
+            expect { Chef::Key.new("username", "user").destroy }.to raise_error(Chef::Exceptions::MissingKeyAttribute)
           end
         end
 
