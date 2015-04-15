@@ -53,6 +53,7 @@ class Chef
       @name = nil
       @public_key = nil
       @expiration_date = nil
+      @create_key = nil
     end
 
     def chef_rest
@@ -82,8 +83,19 @@ class Chef
     end
 
     def public_key(arg=nil)
+      raise Chef::Exceptions::InvalidKeyAttribute, "you cannot set the public_key if create_key is true" if !arg.nil? && @create_key
       set_or_return(:public_key, arg,
                     :kind_of => String)
+    end
+
+    def delete_public_key
+      @public_key = nil
+    end
+
+    def create_key(arg=nil)
+      raise Chef::Exceptions::InvalidKeyAttribute, "you cannot set create_key to true if the public_key field exists" if arg == true && !@public_key.nil?
+      set_or_return(:create_key, arg,
+                    :kind_of => [TrueClass, FalseClass])
     end
 
     def expiration_date(arg=nil)
@@ -98,6 +110,7 @@ class Chef
       result["name"] = @name if @name
       result["public_key"] = @public_key if @public_key
       result["expiration_date"] = @expiration_date if @expiration_date
+      result["create_key"] = @create_key if @create_key
       result
     end
 
@@ -106,8 +119,9 @@ class Chef
     end
 
     def create
-      if @public_key.nil?
-        raise Chef::Exceptions::MissingKeyAttribute, "public_key fields must be populated when create is called"
+      # if public_key is undefined and create_key is false, we cannot create
+      if @public_key.nil? && !@create_key
+        raise Chef::Exceptions::MissingKeyAttribute, "either public_key must be defined or create_key must be true"
       end
 
       # defaults the key name to the fingerprint of the key
@@ -115,7 +129,9 @@ class Chef
         @name = generate_fingerprint_from_public_key_instance
       end
 
-      payload = {"name" => @name, "public_key" => @public_key}
+      payload = {"name" => @name}
+      payload['public_key'] = @public_key unless @public_key.nil?
+      payload['create_key'] = @create_key if @create_key
       payload['expiration_date'] = @expiration_date unless @expiration_date.nil?
       new_key = chef_rest.post_rest("#{api_base}/#{@actor}/keys", payload)
       Chef::Key.from_hash(new_key)
@@ -161,6 +177,7 @@ class Chef
       end
       key.name key_hash['name'] if key_hash.key?('name')
       key.public_key key_hash['public_key'] if key_hash.key?('public_key')
+      key.create_key key_hash['create_key'] if key_hash.key?('create_key')
       key.expiration_date key_hash['expiration_date'] if key_hash.key?('expiration_date')
       key
     end

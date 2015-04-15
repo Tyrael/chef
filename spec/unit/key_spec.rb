@@ -62,12 +62,15 @@ EOS
         key.send(field, valid_input)
         expect(key.send(field)).to eq(valid_input)
       end
+    end
 
-      it "raises an ArgumentError if you feed it anything but a string" do
+    context "when you feed it anything but a string" do
+      it "should raise an ArgumentError" do
         expect { key.send(field, Hash.new) }.to raise_error(ArgumentError)
       end
     end
   end
+
 
   describe "when a new Chef::Key object is initialized with invalid input" do
     it "should raise an InvalidKeyArgument" do
@@ -111,6 +114,48 @@ EOS
     it_should_behave_like "string fields that are settable" do
       let(:field) { :public_key }
       let(:valid_input) { "new_field_value" }
+    end
+
+    context "when create_key is true" do
+      before do
+        key.create_key true
+      end
+
+      it "should raise an InvalidKeyAttribute" do
+        expect { key.public_key public_key_string }.to raise_error(Chef::Exceptions::InvalidKeyAttribute)
+      end
+    end
+  end
+
+  describe "when the create_key field is set" do
+    context "when it is set to true" do
+      it "should set the field" do
+        key.create_key(true)
+        expect(key.create_key).to eq(true)
+      end
+    end
+
+    context "when it is set to false" do
+      it "should set the field" do
+        key.create_key(false)
+        expect(key.create_key).to eq(false)
+      end
+    end
+
+    context "when anything but a TrueClass or FalseClass is passed" do
+      it "should raise an ArgumentError" do
+        expect { key.create_key "not_a_boolean" }.to raise_error(ArgumentError)
+      end
+    end
+
+    context "when public_key is defined" do
+      before do
+        key.public_key public_key_string
+      end
+
+      it "should raise an InvalidKeyAttribute" do
+        expect { key.create_key true }.to raise_error(Chef::Exceptions::InvalidKeyAttribute)
+      end
     end
   end
 
@@ -180,6 +225,15 @@ EOS
       it "should not include the expiration_date if not present" do
         expect(json).to_not include("expiration_date")
       end
+
+      it "should include the create_key field when present" do
+        new_key.create_key true
+        expect(new_key.to_json).to include(%q("create_key":true))
+      end
+
+      it "should not include the create_key if not present" do
+        expect(json).to_not include("create_key")
+      end
     end
 
     context "when key is for a user" do
@@ -223,6 +277,10 @@ EOS
       it "includes the expiration_date if present" do
         expect(key.expiration_date).to eq("infinity")
       end
+
+      it "includes the create_key if present" do
+        expect(key_with_create_key_field.create_key).to eq(true)
+      end
     end
 
     context "when deserializing a key for a user" do
@@ -232,6 +290,11 @@ EOS
                 "name" => "key_name",
                 "public_key" => public_key_string,
                 "expiration_date" => "infinity"}
+          Chef::Key.from_json(o.to_json)
+        end
+        let(:key_with_create_key_field) do
+          o = { "user" => "turtle",
+                "create_key" => true }
           Chef::Key.from_json(o.to_json)
         end
       end
@@ -244,6 +307,11 @@ EOS
                 "name" => "key_name",
                 "public_key" => public_key_string,
                 "expiration_date" => "infinity"}
+          Chef::Key.from_json(o.to_json)
+        end
+        let(:key_with_create_key_field) do
+          o = { "client" => "turtle",
+                "create_key" => true }
           Chef::Key.from_json(o.to_json)
         end
       end
@@ -335,14 +403,41 @@ EOS
             key.name "key_name"
             key.public_key public_key_string
             key.expiration_date "2020-12-24T21:00:00Z"
+            key.create_key false
           end
 
-          it "creates a new key via the API" do
-            expect(rest).to receive(:post_rest).with(url,
-                                                     {"name" => key.name,
-                                                      "public_key" => key.public_key,
-                                                      "expiration_date" => key.expiration_date}).and_return({})
-            key.create
+          context "when create_key is false" do
+            it "creates a new key via the API" do
+              expect(rest).to receive(:post_rest).with(url,
+                                                       {"name" => key.name,
+                                                        "public_key" => key.public_key,
+                                                        "expiration_date" => key.expiration_date}).and_return({})
+              key.create
+            end
+          end
+
+          context "when create_key is true and public_key is nil" do
+            before do
+              key.delete_public_key
+              key.create_key true
+            end
+            it "should create a new key via the API" do
+              expect(rest).to receive(:post_rest).with(url,
+                                                       {"name" => key.name,
+                                                        "create_key" => true,
+                                                        "expiration_date" => key.expiration_date}).and_return({})
+              key.create
+            end
+          end
+
+          context "when create_key is false and public_key is nil" do
+            before do
+              key.delete_public_key
+              key.create_key false
+            end
+            it "should raise an InvalidKeyArgument" do
+              expect { key.create }.to raise_error(Chef::Exceptions::MissingKeyAttribute)
+            end
           end
         end
       end

@@ -71,6 +71,7 @@ class Chef
     class ConfigurationError < ArgumentError; end
     class MissingKeyAttribute < ArgumentError; end
     class InvalidKeyArgument < ArgumentError; end
+    class InvalidKeyAttribute < ArgumentError; end
     class RedirectLimitExceeded < RuntimeError; end
     class AmbiguousRunlistSpecification < ArgumentError; end
     class CookbookFrozen < ArgumentError; end
